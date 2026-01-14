@@ -2,14 +2,24 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"math/rand"
+	"log"
+	randv2 "math/rand/v2"
 	"time"
 )
 
-// SimpleGenerator генератор, останавливаемый по контексту, с возвратом канала,
-// не блокируется при ожидании читателя
-func SimpleGenerator(ctx context.Context, delay time.Duration) <-chan string {
+type HostGenerator struct {
+	hosts []string
+}
+
+func NewHostGenerator(hosts []string) *HostGenerator {
+	return &HostGenerator{
+		hosts: hosts,
+	}
+}
+
+// Run генератор, останавливаемый по контексту, с возвратом канала,
+// не блокируется при ожидании читателя.
+func (hg *HostGenerator) Run(ctx context.Context, delay time.Duration) <-chan string {
 	ch := make(chan string)
 
 	go func() {
@@ -19,21 +29,21 @@ func SimpleGenerator(ctx context.Context, delay time.Duration) <-chan string {
 		for {
 			// если есть контекст, первым делом проверяем ошибку
 			if ctx.Err() != nil {
-				fmt.Println(fmt.Errorf("context error: %w", ctx.Err()))
+				log.Printf("context error: %v\n", ctx.Err())
 				return
 			}
 
-			h = randomHost()
+			h = hg.host()
 
 			select {
 			case <-ctx.Done():
-				fmt.Println(fmt.Errorf("context error: %w", ctx.Err()))
+				log.Printf("context error: %v\n", ctx.Err())
 				return
 			case ch <- h:
 				time.Sleep(delay)
 			default:
 				// не блокируемся, если нет ожидающего читателя
-				fmt.Println("empty read-made channel:", h)
+				log.Printf("empty read-made channel: %v\n", h)
 				time.Sleep(delay)
 			}
 		}
@@ -42,29 +52,31 @@ func SimpleGenerator(ctx context.Context, delay time.Duration) <-chan string {
 	return ch
 }
 
-var hosts = []string{
-	"google.com",
-	"facebook.com",
-	"twitter.com",
-	"instagram.com",
+func (hg *HostGenerator) host() string {
+	return hg.hosts[randv2.IntN(len(hg.hosts))] //nolint:gosec // для простого примера достаточно
 }
-
-func randomHost() string {
-	return hosts[rand.Intn(len(hosts))]
-}
-
-var (
-	timeout    = 1 * time.Second
-	writeDelay = 10 * time.Millisecond
-	readDelay  = 30 * time.Millisecond
-)
 
 func main() {
+	var (
+		hosts = []string{
+			"google.com",
+			"facebook.com",
+			"twitter.com",
+			"instagram.com",
+		}
+
+		timeout    = time.Second * 1
+		writeDelay = time.Millisecond * 10
+		readDelay  = time.Millisecond * 30
+	)
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	for v := range SimpleGenerator(ctx, writeDelay) {
-		fmt.Println("host:", v)
+	g := NewHostGenerator(hosts)
+
+	for h := range g.Run(ctx, writeDelay) {
+		log.Printf("host: %v\n", h)
 		time.Sleep(readDelay)
 	}
 }
