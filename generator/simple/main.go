@@ -7,19 +7,9 @@ import (
 	"time"
 )
 
-type HostGenerator struct {
-	hosts []string
-}
-
-func NewHostGenerator(hosts []string) *HostGenerator {
-	return &HostGenerator{
-		hosts: hosts,
-	}
-}
-
-// Run генератор, останавливаемый по контексту, с возвратом канала,
+// HostGenerator генератор, останавливаемый по контексту, с возвратом канала,
 // не блокируется при ожидании читателя.
-func (hg *HostGenerator) Run(ctx context.Context, delay time.Duration) <-chan string {
+func HostGenerator(ctx context.Context, delay time.Duration, hosts []string) <-chan string {
 	ch := make(chan string)
 
 	go func() {
@@ -33,7 +23,7 @@ func (hg *HostGenerator) Run(ctx context.Context, delay time.Duration) <-chan st
 				return
 			}
 
-			h = hg.host()
+			h = getHost(hosts)
 
 			select {
 			case <-ctx.Done():
@@ -52,8 +42,8 @@ func (hg *HostGenerator) Run(ctx context.Context, delay time.Duration) <-chan st
 	return ch
 }
 
-func (hg *HostGenerator) host() string {
-	return hg.hosts[randv2.IntN(len(hg.hosts))] //nolint:gosec // для простого примера достаточно
+func getHost(hosts []string) string {
+	return hosts[randv2.IntN(len(hosts))] //nolint:gosec // для простого примера достаточно
 }
 
 func main() {
@@ -73,9 +63,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	g := NewHostGenerator(hosts)
-
-	for h := range g.Run(ctx, writeDelay) {
+	for h := range HostGenerator(ctx, writeDelay, hosts) {
 		log.Printf("host: %v\n", h)
 		time.Sleep(readDelay)
 	}
